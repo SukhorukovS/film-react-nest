@@ -1,4 +1,4 @@
-interface GetScheduleDTO {
+export interface GetScheduleDTO {
   id: string;
   daytime: string;
   hall: number;
