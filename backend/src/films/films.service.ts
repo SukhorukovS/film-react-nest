@@ -1,26 +1,28 @@
-import { Injectable } from '@nestjs/common';
-import { CreateFilmDto } from './dto/create-film.dto';
-import { UpdateFilmDto } from './dto/update-film.dto';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+
+import { FilmsRepository } from '../repository/film.repository';
+import {
+  toFilmsResponse,
+  toScheduleResponse,
+} from '../repository/film.converter';
+import { FilmsResponseDto, ScheduleResponseDto } from './dto/films.dto';
 
 @Injectable()
 export class FilmsService {
-  create(createFilmDto: CreateFilmDto) {
-    return 'This action adds a new film';
+  constructor(
+    @Inject(FilmsRepository) private readonly filmsRepository: FilmsRepository,
+  ) {}
+
+  async findAll(): Promise<FilmsResponseDto> {
+    const films = await this.filmsRepository.findAll();
+    return toFilmsResponse(films);
   }
 
-  findAll() {
-    return `This action returns all films`;
-  }
-
-  findOne(id: number) {
-    return `This action returns a #${id} film`;
-  }
-
-  update(id: number, updateFilmDto: UpdateFilmDto) {
-    return `This action updates a #${id} film`;
-  }
-
-  remove(id: number) {
-    return `This action removes a #${id} film`;
+  async getSchedule(filmId: string): Promise<ScheduleResponseDto> {
+    const schedule = await this.filmsRepository.findScheduleByFilmId(filmId);
+    if (!schedule) {
+      throw new NotFoundException(`Фильм с id ${filmId} не найден`);
+    }
+    return toScheduleResponse(schedule);
   }
 }
