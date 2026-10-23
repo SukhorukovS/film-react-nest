@@ -5,10 +5,16 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 
-import { CreateOrderDto, TicketDto } from './dto/order.dto';
-import { OrderResponseDto } from './dto/order.dto';
+import { FilmSchedule } from '../films/entities/schedule.entity';
 import { FilmsRepository } from '../repository/film.repository';
 import { toOrderResponse, toPlace } from '../repository/order.converter';
+import { CreateOrderDto, OrderResponseDto, TicketDto } from './dto/order.dto';
+
+interface SessionTickets {
+  filmId: string;
+  sessionId: string;
+  tickets: TicketDto[];
+}
 
 @Injectable()
 export class OrderService {
@@ -17,65 +23,79 @@ export class OrderService {
   ) {}
 
   async create(dto: CreateOrderDto): Promise<OrderResponseDto> {
-    const groups = new Map<string, TicketDto[]>();
-    for (const ticket of dto.tickets) {
-      const key = `${ticket.film}:${ticket.session}`;
-      const group = groups.get(key) ?? [];
-      group.push(ticket);
-      groups.set(key, group);
-    }
+    const sessionTickets = this.groupTicketsBySession(dto.tickets);
 
-    for (const [key, tickets] of groups) {
-      const separatorIndex = key.indexOf(':');
-      const filmId = key.slice(0, separatorIndex);
-      const sessionId = key.slice(separatorIndex + 1);
+    for (const { filmId, sessionId, tickets } of sessionTickets) {
+      const session = await this.findSession(filmId, sessionId);
 
-      const schedule = await this.filmsRepository.findScheduleByFilmId(filmId);
-      const session = schedule?.find((s) => s.id === sessionId);
-      if (!session) {
-        throw new NotFoundException(
-          `Сеанс ${sessionId} фильма ${filmId} не найден`,
-        );
-      }
+      this.assertSeatsNotDuplicated(tickets);
+      this.assertSeatsExist(tickets, session);
 
       const places = tickets.map(toPlace);
-      if (new Set(places).size !== places.length) {
-        throw new BadRequestException(
-          'В заказе указано одно и то же место дважды',
-        );
-      }
-
-      const busy = places.filter((place) => session.taken.includes(place));
-      if (busy.length) {
-        throw new BadRequestException(
-          `Места уже заняты: ${busy.join(', ')} в сеансе ${sessionId}`,
-        );
-      }
-
-      const invalid = places.find((place) => {
-        const [row, seat] = place.split(':').map(Number);
-        return (
-          row < 1 || row > session.rows || seat < 1 || seat > session.seats
-        );
-      });
-      if (invalid) {
-        throw new BadRequestException(
-          `Место ${invalid} не существует в сеансе ${sessionId}`,
-        );
-      }
-
-      const updated = await this.filmsRepository.occupySeats(
+      const isOccupied = await this.filmsRepository.occupySeats(
         filmId,
         sessionId,
         places,
       );
-      if (!updated) {
-        throw new BadRequestException(
-          `Одно из мест уже занято в сеансе ${sessionId}`,
-        );
+      if (!isOccupied) {
+        throw new BadRequestException(`Места уже заняты в сеансе ${sessionId}`);
       }
     }
 
     return toOrderResponse(dto.tickets);
+  }
+
+  private groupTicketsBySession(tickets: TicketDto[]): SessionTickets[] {
+    const groups = new Map<string, SessionTickets>();
+    for (const ticket of tickets) {
+      const key = `${ticket.film}:${ticket.session}`;
+      const group = groups.get(key) ?? {
+        filmId: ticket.film,
+        sessionId: ticket.session,
+        tickets: [],
+      };
+      group.tickets.push(ticket);
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  }
+
+  private async findSession(
+    filmId: string,
+    sessionId: string,
+  ): Promise<FilmSchedule> {
+    const schedule = await this.filmsRepository.findScheduleByFilmId(filmId);
+    const session = schedule?.find(({ id }) => id === sessionId);
+    if (!session) {
+      throw new NotFoundException(
+        `Сеанс ${sessionId} фильма ${filmId} не найден`,
+      );
+    }
+    return session;
+  }
+
+  private assertSeatsNotDuplicated(tickets: TicketDto[]): void {
+    const places = tickets.map(toPlace);
+    const hasDuplicates = new Set(places).size !== places.length;
+    if (hasDuplicates) {
+      throw new BadRequestException(
+        'В заказе указано одно и то же место дважды',
+      );
+    }
+  }
+
+  private assertSeatsExist(tickets: TicketDto[], session: FilmSchedule): void {
+    const invalid = tickets.find(
+      (ticket) =>
+        ticket.row < 1 ||
+        ticket.row > session.rows ||
+        ticket.seat < 1 ||
+        ticket.seat > session.seats,
+    );
+    if (invalid) {
+      throw new BadRequestException(
+        `Место ${toPlace(invalid)} не существует в сеансе ${session.id}`,
+      );
+    }
   }
 }

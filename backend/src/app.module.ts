@@ -4,7 +4,6 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { MongooseModule } from '@nestjs/mongoose';
 import * as path from 'node:path';
 
-import { configProvider } from './app.config.provider';
 import { FilmsModule } from './films/films.module';
 import { OrderModule } from './order/order.module';
 
@@ -26,6 +25,6 @@ import { OrderModule } from './order/order.module';
       inject: [ConfigService],
     }),
   ],
-  providers: [configProvider],
+  providers: [],
 })
 export class AppModule {}

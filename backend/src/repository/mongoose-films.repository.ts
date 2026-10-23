@@ -44,6 +44,6 @@ export class MongooseFilmsRepository extends FilmsRepository {
     if (!film) {
       return null;
     }
-    return film.schedule?.find((s) => s.id === sessionId) ?? null;
+    return film.schedule?.find(({ id }) => id === sessionId) ?? null;
   }
 }
