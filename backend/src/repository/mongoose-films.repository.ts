@@ -23,4 +23,27 @@ export class MongooseFilmsRepository extends FilmsRepository {
       .exec();
     return film?.schedule ?? null;
   }
+
+  async occupySeats(
+    filmId: string,
+    sessionId: string,
+    places: string[],
+  ): Promise<FilmSchedule | null> {
+    const film = await this.filmModel
+      .findOneAndUpdate(
+        {
+          id: filmId,
+          schedule: { $elemMatch: { id: sessionId, taken: { $nin: places } } },
+        },
+        { $push: { 'schedule.$.taken': { $each: places } } },
+        { new: true },
+      )
+      .lean<Film>()
+      .exec();
+
+    if (!film) {
+      return null;
+    }
+    return film.schedule?.find((s) => s.id === sessionId) ?? null;
+  }
 }

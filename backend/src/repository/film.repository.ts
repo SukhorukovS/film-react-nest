@@ -5,4 +5,10 @@ export abstract class FilmsRepository {
   abstract findAll(): Promise<Film[]>;
 
   abstract findScheduleByFilmId(filmId: string): Promise<FilmSchedule[] | null>;
+
+  abstract occupySeats(
+    filmId: string,
+    sessionId: string,
+    places: string[],
+  ): Promise<FilmSchedule | null>;
 }
